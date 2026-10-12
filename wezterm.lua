@@ -276,6 +276,12 @@ local ACTIVE_TAB_FG = "#ffffff"
 local ACTIVE_IDLE_COLOR = "#c0caf5"
 local INACTIVE_TAB_FG = "#737aa2"
 local INACTIVE_INDEX_FG = "#545c7e"
+-- Hovering an inactive tab lifts it to Tokyo Night's highlight background with
+-- brighter text: clearly reactive, but never blue or bold, so it can't be
+-- mistaken for the active tab.
+local HOVER_TAB_BG = "#292e42"
+local HOVER_TAB_FG = "#c0caf5"
+local HOVER_INDEX_FG = "#737aa2"
 
 -- Panes that have rung the bell and not yet been looked at. Persisted in
 -- wezterm.GLOBAL so it survives config reloads. Keyed by pane id (as string).
@@ -359,12 +365,12 @@ wezterm.on("format-tab-title", function(tab, tabs, panes, conf, hover, max_width
 	end
 
 	return {
-		{ Background = { Color = TAB_BAR_BG } },
-		{ Foreground = { Color = INACTIVE_INDEX_FG } },
+		{ Background = { Color = hover and HOVER_TAB_BG or TAB_BAR_BG } },
+		{ Foreground = { Color = hover and HOVER_INDEX_FG or INACTIVE_INDEX_FG } },
 		{ Text = prefix },
 		{ Foreground = { Color = dot_color } },
 		{ Text = dot .. " " },
-		{ Foreground = { Color = INACTIVE_TAB_FG } },
+		{ Foreground = { Color = hover and HOVER_TAB_FG or INACTIVE_TAB_FG } },
 		{ Text = title .. " " },
 	}
 end)
