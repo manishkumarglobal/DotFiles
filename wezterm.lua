@@ -16,7 +16,22 @@ config.line_height = 1.1
 
 config.window_background_opacity = 0.98
 config.macos_window_background_blur = 20
-config.window_decorations = "RESIZE"
+-- No separate macOS title bar: the tab bar is the top of the window.
+-- INTEGRATED_BUTTONS keeps the native close / minimize / zoom buttons, drawn
+-- over the left end of the tab bar (the retro tab bar reserves room for them).
+config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
+-- The retro tab bar is exactly one text row tall with no padding of its own,
+-- so it sat flush against the window's top edge. A top border in the tab
+-- bar's colour gives it breathing room and a taller band for the window
+-- buttons, without changing the terminal's own line spacing.
+-- TAB_BAR_BG is Tokyo Night's tab bar background. The border and the
+-- inactive tabs (see format-tab-title) both use it, so the bar reads as one
+-- surface, matching the strip reserved behind the window buttons.
+local TAB_BAR_BG = "#191b28"
+config.window_frame = {
+	border_top_height = "8px",
+	border_top_color = TAB_BAR_BG,
+}
 config.window_padding = {
 	left = 8,
 	right = 8,
@@ -41,9 +56,17 @@ config.initial_rows = 50
 --------------------------------------------------------------------------------
 config.enable_tab_bar = true
 config.hide_tab_bar_if_only_one_tab = true
-config.use_fancy_tab_bar = true
+-- Retro (not fancy) tab bar, so tab names are not cut. The fancy bar gives
+-- every tab the same fixed share of the window width (window width divided by
+-- the number of tabs), whatever its title, and clips anything longer; with
+-- many tabs open that cuts even short names. The retro bar sizes each tab to
+-- its own title, so short names leave room for long ones, and only shrinks
+-- tabs once their combined width no longer fits the window.
+config.use_fancy_tab_bar = false
 config.tab_bar_at_bottom = false
-config.tab_max_width = 32
+-- Upper bound on a single tab's width, in cells, so one very long title can't
+-- crowd out the rest.
+config.tab_max_width = 60
 
 --------------------------------------------------------------------------------
 -- Close confirmation (always ask, in every scenario)
@@ -242,6 +265,18 @@ local RUNNING_COLOR = "#e0af68" -- amber while running
 local DONE_COLOR = "#9ece6a" -- green: done / needs attention (bell fired)
 local IDLE_COLOR = "#565f89" -- dim: idle
 
+-- The retro tab bar is flat, and the scheme's active and inactive tab
+-- backgrounds are nearly identical, so the formatter styles the active tab
+-- itself: a solid blue block with bold white text, while inactive titles are
+-- dimmed. The blue is deliberately mid-tone rather than Tokyo Night's bright
+-- #7aa2f7, so the amber and green dots stay readable on it; the dim idle dot
+-- would vanish on blue, so the active tab uses a light idle color instead.
+local ACTIVE_TAB_BG = "#3d59a1"
+local ACTIVE_TAB_FG = "#ffffff"
+local ACTIVE_IDLE_COLOR = "#c0caf5"
+local INACTIVE_TAB_FG = "#737aa2"
+local INACTIVE_INDEX_FG = "#545c7e"
+
 -- Panes that have rung the bell and not yet been looked at. Persisted in
 -- wezterm.GLOBAL so it survives config reloads. Keyed by pane id (as string).
 local function set_done(pane_id, value)
@@ -296,18 +331,40 @@ wezterm.on("format-tab-title", function(tab, tabs, panes, conf, hover, max_width
 		title = proc ~= "" and proc or "shell"
 	end
 
-	-- Leave room for the dot, a space, and the tab index.
-	local prefix = string.format(" %d: ", tab.tab_index + 1)
-	local budget = max_width - #prefix - 3
-	if #title > budget and budget > 1 then
-		title = title:sub(1, budget - 1) .. "…"
+	-- Leave room for the tab index, the dot, its space, and the trailing space
+	-- (the 3 below must match the dot + space + trailing space rendered after
+	-- the prefix). Measure in display columns, not bytes, so non-ASCII titles
+	-- are neither cut early nor split mid-character. The prefix is kept compact
+	-- because every column of per-tab overhead is multiplied by the tab count.
+	local prefix = string.format(" %d ", tab.tab_index + 1)
+	local budget = max_width - wezterm.column_width(prefix) - 3
+	if wezterm.column_width(title) > budget and budget > 1 then
+		title = wezterm.truncate_right(title, budget - 1) .. "…"
+	end
+
+	if tab.is_active then
+		if dot_color == IDLE_COLOR then
+			dot_color = ACTIVE_IDLE_COLOR
+		end
+		return {
+			{ Background = { Color = ACTIVE_TAB_BG } },
+			{ Attribute = { Intensity = "Bold" } },
+			{ Foreground = { Color = ACTIVE_TAB_FG } },
+			{ Text = prefix },
+			{ Foreground = { Color = dot_color } },
+			{ Text = dot .. " " },
+			{ Foreground = { Color = ACTIVE_TAB_FG } },
+			{ Text = title .. " " },
+		}
 	end
 
 	return {
+		{ Background = { Color = TAB_BAR_BG } },
+		{ Foreground = { Color = INACTIVE_INDEX_FG } },
 		{ Text = prefix },
 		{ Foreground = { Color = dot_color } },
 		{ Text = dot .. " " },
-		{ Foreground = { Color = "#c0caf5" } },
+		{ Foreground = { Color = INACTIVE_TAB_FG } },
 		{ Text = title .. " " },
 	}
 end)
