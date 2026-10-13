@@ -1,4 +1,11 @@
 
+# Directory holding these zsh configs, resolved through the ~/.zshrc symlink.
+ZSH_CONFIG_DIR=${${(%):-%x}:A:h}
+
+# Private, persistent cache for the completion dump and generated completions.
+ZSH_CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/zsh
+[[ -d $ZSH_CACHE/completions ]] || mkdir -p -m 700 $ZSH_CACHE $ZSH_CACHE/completions
+
 # Enabling Antigen https://github.com/zsh-users/antigen
 source ~/antigen.zsh
 
@@ -10,7 +17,6 @@ antigen use oh-my-zsh
 antigen bundles <<EOBUNDLES
   git
   colored-man-pages
-  colorize
   cp
   iterm2
   screen
@@ -19,6 +25,7 @@ antigen bundles <<EOBUNDLES
   zsh-navigation-tools
   djui/alias-tips
   zsh-users/zsh-completions
+  zsh-users/zsh-autosuggestions
   zsh-users/zsh-syntax-highlighting
   zsh-users/zsh-history-substring-search
 EOBUNDLES
@@ -43,57 +50,58 @@ antigen theme agnoster
 # Tell Antigen that you're done.
 antigen apply
 
-# Sourcing Theme configs
-#source ~/git/DotFiles/zsh/custom_agnoster-theme.zsh
+# Antigen also appends every bundle directory to PATH; plugins load through
+# fpath and source, so drop them to keep stray plugin scripts (e.g. iterm2's
+# `update`) from resolving as commands.
+path=(${path:#$HOME/.antigen/bundles/*})
 
-# Sourcing Aliases
-source ~/git/DotFiles/zsh/aliases.zsh
+# Sourcing my custom ZSH variables (PATH first, so later tool checks see it)
+source $ZSH_CONFIG_DIR/variables.zsh
+
+# Sourcing Theme configs
+#source $ZSH_CONFIG_DIR/custom_agnoster-theme.zsh
 
 # Sourcing Autojump settings
-source ~/git/DotFiles/zsh/autojump.zsh
+source $ZSH_CONFIG_DIR/autojump.zsh
 
 # Sourcing zstyle configs
-source ~/git/DotFiles/zsh/zstyles.zsh
+source $ZSH_CONFIG_DIR/zstyles.zsh
 
-# Auto completion configs
-source ~/git/DotFiles/zsh/completion.zsh
-
-# Auto completion kustomize configs
-source ~/git/DotFiles/zsh/kustomize_completion.zsh
+# Auto completion configs (the only place compinit runs)
+source $ZSH_CONFIG_DIR/completion.zsh
 
 # Sourcing setopt configs
-source ~/git/DotFiles/zsh/setopt.zsh
+source $ZSH_CONFIG_DIR/setopt.zsh
 
 # Sourcing ZSH mod configs
-source ~/git/DotFiles/zsh/modules.zsh
+source $ZSH_CONFIG_DIR/modules.zsh
 
 # Sourcing ZSH functions
-#source ~/git/DotFiles/zsh/functions.zsh
+#source $ZSH_CONFIG_DIR/functions.zsh
 
 # Sourcing Key binding configs
-source ~/git/DotFiles/zsh/key_bindings.zsh
+source $ZSH_CONFIG_DIR/key_bindings.zsh
 
 # Sourcing some extra zsh configs
-source ~/git/DotFiles/zsh/extra.zsh
+source $ZSH_CONFIG_DIR/extra.zsh
 
 # Sourcing installed plugins configs
-source ~/git/DotFiles/zsh/plugins_configs.zsh
+source $ZSH_CONFIG_DIR/plugins_configs.zsh
 
-# Sourcing my custom ZSH variables
-source ~/git/DotFiles/zsh/variables.zsh
-
-# Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
-export PATH="$PATH:$HOME/.rvm/bin"
-if [ $commands[kubectl] ]; then source <(kubectl completion zsh); fi
-
+# nvm is loaded without activating a version, so `node` stays Homebrew's until `nvm use`.
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+if [[ -s $NVM_DIR/nvm.sh ]]; then
+  # Parsed without aliases, so oh-my-zsh's grep alias is not baked into nvm's functions.
+  () { setopt localoptions noaliases; source "$NVM_DIR/nvm.sh" --no-use }
+  # nvm's alias parsing uses `#` patterns that fail under extendedglob (setopt.zsh).
+  functions -c nvm _nvm_unwrapped
+  nvm() { setopt localoptions noextendedglob; _nvm_unwrapped "$@" }
+fi
 
 # bun completions
-[ -s "/Users/manish/.bun/_bun" ] && source "/Users/manish/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
-export PATH="/Users/manish/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
@@ -106,7 +114,10 @@ export HF_ASSETS_CACHE="$HF_HOME/assets"
 export HF_TOKEN_PATH="$HF_HOME/token"
 
 # The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/manish/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/manish/Downloads/google-cloud-sdk/path.zsh.inc'; fi
+if [ -f "$HOME/Downloads/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/Downloads/google-cloud-sdk/path.zsh.inc"; fi
 
 # The next line enables shell command completion for gcloud.
-if [ -f '/Users/manish/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/manish/Downloads/google-cloud-sdk/completion.zsh.inc'; fi
+if [ -f "$HOME/Downloads/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/Downloads/google-cloud-sdk/completion.zsh.inc"; fi
+
+# Sourcing Aliases last, so they never expand inside third-party scripts sourced above
+source $ZSH_CONFIG_DIR/aliases.zsh

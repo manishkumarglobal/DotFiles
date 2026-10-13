@@ -12,9 +12,13 @@ It uses Antigen plugin manager, which in-turn uses oh-my-zsh also
 
   * Make sure ZSH is installed on the machine
   * mkdir git; cd git
-  * git clone https://github.com/napsterX/DotFiles.git
-  * sh ~/git/DotFiles/zsh/commands.sh
-  * ln -s ~/git/DotFiles/zsh/zshrc ~/.zshrc
+  * git clone https://github.com/manishkumarglobal/DotFiles.git
+  * bash ~/git/DotFiles/zsh/commands.sh
+    * Installs Antigen v2.2.2 (checksum-verified) to ~/antigen.zsh and links ~/.zshrc to this repo's zshrc.
+    * Safe to re-run; it never overwrites an existing ~/antigen.zsh or ~/.zshrc.
+
+The completion dump and generated completions are cached in ~/.cache/zsh (or $XDG_CACHE_HOME/zsh).
+If completions look stale, delete that directory and run `antigen reset`, then open a new shell.
 
 
 Install fonts from https://github.com/powerline/fonts

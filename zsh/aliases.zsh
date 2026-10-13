@@ -7,7 +7,7 @@
 alias kdp='kubectl describe pods'
 alias kgp='kubectl get pods'
 alias kl='kubectl logs'
-alias cl='/Users/manish/.local/bin/claude'
+alias cl="$HOME/.local/bin/claude"
 
 # Local Alias
 alias -s rb=vim
@@ -20,23 +20,15 @@ alias 'gg'='git grep'
 #alias 'g st'='git status'
 #alias 'glo'='git log'
 #alias 'g di'='git diff'
-alias 'grp'='git reset --hard HEAD~1 ; git pull'
 alias ping='ping -c 100000'
-alias dmesg='dmesg --color --reltime'
-
-alias bypass='sudo /System/Library/Extensions/TMSafetyNet.kext/Helpers/bypass'
-alias port='sudo port'
-alias glist=/Users/mankumar/code/itops/python/glulist
-alias smcli='smcli --post_review_path=/usr/local/bin/post-review --rbt_path /usr/local/bin/rbt'
-
-# Global Aliases
-alias -g gi='| grep -i'
 
 # Flush Directory Service cache
 alias flush="dscacheutil -flushcache && killall -HUP mDNSResponder"
 
 # Show active network interfaces
-alias ifactive="ifconfig | pcregrep -M -o '^[^\t:]+:([^\n]|\n\t)*status: active'"
+ifactive() {
+    ifconfig | awk '/^[^ \t]/ { if (b ~ /status: active/) printf "%s", b; b = "" } { b = b $0 "\n" } END { if (b ~ /status: active/) printf "%s", b }'
+}
 
 # IP addresses
 alias ip="dig +short myip.opendns.com @resolver1.opendns.com"
@@ -53,7 +45,8 @@ alias hide="defaults write com.apple.finder AppleShowAllFiles -bool false && kil
 alias map="xargs -n1"
 
 # Lock the screen (when going AFK)
-alias afk="/System/Library/CoreServices/Menu\ Extras/User.menu/Contents/Resources/CGSession -suspend"
+# (locks when "Require password after screen saver begins or display is turned off" is set to Immediately)
+alias afk="pmset displaysleepnow"
 
 # Print each PATH entry on a separate line
 alias path='echo -e ${PATH//:/\\n}'
