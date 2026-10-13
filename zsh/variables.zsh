@@ -53,4 +53,4 @@ else
   SHORT_HOST=${HOST/.*/}
 fi
 
-PATH="/opt/homebrew/bin/:/opt/homebrew/sbin/:/Users/manish/.local/bin:/opt/local/bin:/Users/manish/nap/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:/sbin:/usr/sbin:/usr/local/mysql/bin:/Users/manish/Library/Python/2.7/bin:/Users/manish/Library/Python/3.6/bin:$PATH"
+PATH="~/Dropbox/bin:/opt/homebrew/bin/:/opt/homebrew/sbin/:/Users/manish/.local/bin:/opt/local/bin:/Users/manish/nap/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:/sbin:/usr/sbin:/usr/local/mysql/bin:/Users/manish/Library/Python/2.7/bin:/Users/manish/Library/Python/3.6/bin:$PATH"
