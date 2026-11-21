@@ -60,12 +60,17 @@ config.hide_tab_bar_if_only_one_tab = true
 -- every tab the same fixed share of the window width (window width divided by
 -- the number of tabs), whatever its title, and clips anything longer; with
 -- many tabs open that cuts even short names. The retro bar sizes each tab to
--- its own title, so short names leave room for long ones, and only shrinks
--- tabs once their combined width no longer fits the window.
+-- its own title, so short names leave room for long ones.
+--
+-- Once the titles no longer fit, WezTerm itself falls back to that same equal
+-- share for every tab, the active one included, so with many tabs open you
+-- can't read which tab you are on. The format-tab-title handler below avoids
+-- that: when the bar is full it gives the active tab its whole title and
+-- shrinks the inactive tabs to fit the rest (see "Tab widths" below).
 config.use_fancy_tab_bar = false
 config.tab_bar_at_bottom = false
 -- Upper bound on a single tab's width, in cells, so one very long title can't
--- crowd out the rest.
+-- crowd out the rest. The active tab expands up to this width too.
 config.tab_max_width = 60
 
 --------------------------------------------------------------------------------
@@ -317,6 +322,148 @@ local function basename(path)
 	return path:gsub("(.*[/\\])(.*)", "%2")
 end
 
+--------------------------------------------------------------------------------
+-- Tab widths (the active tab expands when the bar is full)
+--------------------------------------------------------------------------------
+-- How WezTerm (20240203) lays out the retro tab bar: it calls format-tab-title
+-- once per tab with max_width = tab_max_width and sums the widths returned.
+-- If that sum fits, every tab is drawn at the width it asked for. If not, it
+-- clamps EVERY tab, active included, to (available cells / number of tabs),
+-- and nothing a handler returns can be wider than that.
+--
+-- So the handler does the allocation itself and keeps the sum within the
+-- space WezTerm checks against. WezTerm then never clamps, and the widths
+-- chosen here are what you see: the active tab gets its whole title (up to
+-- tab_max_width), each inactive tab keeps at least its index and dot, and the
+-- inactive titles share what is left evenly, short titles giving their unused
+-- space to longer ones.
+--
+-- The handler is not told the window width. The panes of the active tab are
+-- passed in with their position and size, and the rightmost pane edge is the
+-- terminal's width in cells. WezTerm sizes the bar from the window width,
+-- which also includes the window padding, so this is a slight underestimate
+-- and errs on the side of fitting.
+
+-- Cells after the index prefix: the dot, the space after it, and the trailing
+-- space after the title. Must match what the handler renders.
+local TITLE_OVERHEAD = 3
+-- The retro bar's new-tab button, WezTerm's default " + ".
+local NEW_TAB_BUTTON_CELLS = 3
+-- Blank cells the retro bar puts at its left for the native macOS window
+-- buttons (window_decorations INTEGRATED_BUTTONS). WezTerm's own fit check
+-- does not count them, so without this the end of a full bar is cut off.
+local MACOS_BUTTON_CELLS = 10
+
+local function tab_prefix(tab)
+	return string.format(" %d ", tab.tab_index + 1)
+end
+
+-- Title: prefer the tab's own title, else the foreground process name.
+-- active_pane can be nil in WezTerm, and this runs for every tab of the bar,
+-- so one tab without a pane must not break the titles of the others.
+local function tab_title_text(tab)
+	local title = tab.tab_title
+	if title and #title > 0 then
+		return title
+	end
+	local pane = tab.active_pane
+	local proc = pane and basename(pane.foreground_process_name) or ""
+	return proc ~= "" and proc or "shell"
+end
+
+-- Smallest useful width: the index and the dot, no title.
+local function min_tab_width(tab)
+	return wezterm.column_width(tab_prefix(tab)) + TITLE_OVERHEAD
+end
+
+local function natural_tab_width(tab)
+	local width = min_tab_width(tab) + wezterm.column_width(tab_title_text(tab))
+	return math.min(width, config.tab_max_width)
+end
+
+-- Width for each tab (by position in `tabs`), or nil when the handler should
+-- not intervene: everything already fits, the width is unknown, or there are
+-- so many tabs that even index-and-dot does not fit (WezTerm's equal share
+-- then applies as before).
+local function allocate_tab_widths(tabs, panes)
+	local cols = 0
+	for _, p in ipairs(panes) do
+		cols = math.max(cols, p.left + p.width)
+	end
+	if cols == 0 then
+		return nil
+	end
+
+	-- WezTerm's check subtracts one cell per tab gap (n - 1) that the retro bar
+	-- never draws, but not the window-button cells that it does draw, so the
+	-- total has to satisfy both.
+	local n = #tabs
+	local budget = cols - NEW_TAB_BUTTON_CELLS - math.max(MACOS_BUTTON_CELLS, n - 1)
+
+	local natural, minimum, total, min_total, active = {}, {}, 0, 0, nil
+	for i, t in ipairs(tabs) do
+		natural[i] = natural_tab_width(t)
+		minimum[i] = math.min(min_tab_width(t), natural[i])
+		total = total + natural[i]
+		if t.is_active then
+			active = i
+		else
+			min_total = min_total + minimum[i]
+		end
+	end
+	if total <= budget or not active then
+		return nil
+	end
+
+	local widths = {}
+	widths[active] = math.min(natural[active], budget - min_total)
+	if widths[active] < minimum[active] then
+		return nil
+	end
+
+	-- Every inactive tab starts at its minimum; the spare cells go to titles,
+	-- an equal share at a time, smallest need first so a short title hands its
+	-- unused share on to the longer ones. Shares round up: when there are
+	-- fewer spare cells than tabs, a whole short title is worth more than one
+	-- more letter of a long one that stays cut anyway.
+	local spare = budget - widths[active] - min_total
+	local order = {}
+	for i = 1, n do
+		if i ~= active then
+			order[#order + 1] = i
+		end
+	end
+	table.sort(order, function(a, b)
+		local need_a, need_b = natural[a] - minimum[a], natural[b] - minimum[b]
+		if need_a ~= need_b then
+			return need_a < need_b
+		end
+		return a < b
+	end)
+	for k, i in ipairs(order) do
+		local share = math.ceil(spare / (#order - k + 1))
+		local extra = math.min(natural[i] - minimum[i], share)
+		widths[i] = minimum[i] + extra
+		spare = spare - extra
+	end
+	return widths
+end
+
+-- Cut a title to `budget` display columns, marking the cut with an ellipsis.
+-- Columns, not bytes, so non-ASCII titles are neither cut early nor split
+-- mid-character. A cut that lands after a space drops the space, so the tab
+-- reads "mac…" rather than "mac …".
+local function fit_title(title, budget)
+	if wezterm.column_width(title) <= budget then
+		return title
+	end
+	if budget < 1 then
+		return ""
+	end
+	local kept = wezterm.truncate_right(title, budget - 1):gsub("%s+$", "")
+	return kept .. "…"
+end
+
 wezterm.on("format-tab-title", function(tab, tabs, panes, conf, hover, max_width)
 	local pane = tab.active_pane
 	local proc = basename(pane.foreground_process_name)
@@ -331,22 +478,23 @@ wezterm.on("format-tab-title", function(tab, tabs, panes, conf, hover, max_width
 		dot, dot_color = IDLE_DOT, IDLE_COLOR
 	end
 
-	-- Title: prefer the tab's own title, else the foreground process name.
-	local title = tab.tab_title
-	if not title or #title == 0 then
-		title = proc ~= "" and proc or "shell"
+	-- The width this tab gets: WezTerm's limit, narrowed by the allocation
+	-- when the bar is full. The result depends only on the tabs and the window
+	-- size, never on hover, so both of WezTerm's layout passes agree.
+	local width = max_width
+	local widths = allocate_tab_widths(tabs, panes)
+	if widths then
+		for i, t in ipairs(tabs) do
+			if t.tab_id == tab.tab_id then
+				width = math.min(width, widths[i])
+			end
+		end
 	end
 
-	-- Leave room for the tab index, the dot, its space, and the trailing space
-	-- (the 3 below must match the dot + space + trailing space rendered after
-	-- the prefix). Measure in display columns, not bytes, so non-ASCII titles
-	-- are neither cut early nor split mid-character. The prefix is kept compact
-	-- because every column of per-tab overhead is multiplied by the tab count.
-	local prefix = string.format(" %d ", tab.tab_index + 1)
-	local budget = max_width - wezterm.column_width(prefix) - 3
-	if wezterm.column_width(title) > budget and budget > 1 then
-		title = wezterm.truncate_right(title, budget - 1) .. "…"
-	end
+	-- The prefix is kept compact because every column of per-tab overhead is
+	-- multiplied by the tab count.
+	local prefix = tab_prefix(tab)
+	local title = fit_title(tab_title_text(tab), width - wezterm.column_width(prefix) - TITLE_OVERHEAD)
 
 	if tab.is_active then
 		if dot_color == IDLE_COLOR then
