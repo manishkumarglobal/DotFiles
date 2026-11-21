@@ -24,3 +24,10 @@ If completions look stale, delete that directory and run `antigen reset`, then o
 Install fonts from https://github.com/powerline/fonts
 
 That's it. You are all set to enjoy ZSH
+
+## WezTerm
+
+`wezterm.lua` is the WezTerm config; link it with `ln -s ~/git/DotFiles/wezterm.lua ~/.config/wezterm/wezterm.lua`.
+When the tab bar is full, the active tab keeps its whole title and the other tabs shrink to fit.
+The tab bar logic has tests that run the real config through WezTerm's tab bar layout steps.
+Run them with `luajit tests/wezterm_tab_bar_test.lua` (LuaJIT from Homebrew: `brew install luajit`).
