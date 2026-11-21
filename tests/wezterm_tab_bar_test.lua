@@ -149,8 +149,11 @@ local function many_titles(n)
 	return t
 end
 
--- Window padding adds about two cells to the bar beyond the terminal columns.
-local PADDING_CELLS = 2
+-- Cells the bar may extend beyond the terminal columns. None: the handler
+-- budgets from the terminal columns alone, so a bar that fits only thanks to
+-- slack here would mean the budget is too generous, and a real window with
+-- less padding would overflow.
+local PADDING_CELLS = 0
 
 -- Tests -----------------------------------------------------------------------
 
@@ -303,6 +306,44 @@ do
 		check(r.texts[i]:find(" …", 1, true) == nil, "space before ellipsis in tab " .. i .. ": '" .. r.texts[i] .. "'")
 	end
 	check(r.widths[6] == #" 6 ○ dotfiles wezterm tabs " - 2, "space: active tab cut, got '" .. r.texts[6] .. "'")
+end
+
+-- 8. An untitled tab without an active pane (it is optional in WezTerm) must
+-- not break the titles of the other tabs. The widths are allocated from every
+-- tab of the bar, so a missing pane that raised there would fail them all.
+-- The handler's own use of the current tab's pane is not covered, so the
+-- tab without a pane is not rendered; the others are, given the full tab list.
+for _, paneless in ipairs({ 3, 12 }) do
+	local n, active, cols = 12, 6, 220
+	local titles = many_titles(n)
+	local tabs = make_tabs(titles, active)
+	tabs[paneless].tab_title = ""
+	tabs[paneless].active_pane = nil
+	local panes = make_panes(cols)
+	local label = string.format("no active pane on tab %d", paneless)
+	local expected_full = " " .. active .. " ○ " .. titles[active] .. " "
+
+	local used, cut = 0, false
+	for i, tab in ipairs(tabs) do
+		if i ~= paneless then
+			local ok, items = pcall(handler, tab, tabs, panes, config, false, config.tab_max_width)
+			check(ok, label .. ": handler raised an error for tab " .. i .. ": " .. tostring(items))
+			if ok then
+				local text = render(items)
+				used = used + utf8_len(text)
+				if i == active then
+					check(text == expected_full, label .. ": active tab cut, got '" .. text .. "'")
+				elseif text:find("…", 1, true) then
+					cut = true
+				end
+			end
+		end
+	end
+	check(cut, label .. ": expected a full bar, with some inactive title cut")
+	check(
+		MACOS_BUTTON_CELLS + used + #string.format(" %d ", paneless) + 3 + NEW_TAB_BUTTON_CELLS <= cols,
+		label .. ": the other tabs leave no room for the tab without a pane"
+	)
 end
 
 print(string.format("%d checks, %d failures", checks, failures))

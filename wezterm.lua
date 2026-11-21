@@ -359,12 +359,15 @@ local function tab_prefix(tab)
 end
 
 -- Title: prefer the tab's own title, else the foreground process name.
+-- active_pane can be nil in WezTerm, and this runs for every tab of the bar,
+-- so one tab without a pane must not break the titles of the others.
 local function tab_title_text(tab)
 	local title = tab.tab_title
 	if title and #title > 0 then
 		return title
 	end
-	local proc = basename(tab.active_pane.foreground_process_name)
+	local pane = tab.active_pane
+	local proc = pane and basename(pane.foreground_process_name) or ""
 	return proc ~= "" and proc or "shell"
 end
 
