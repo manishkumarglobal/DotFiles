@@ -1,0 +1,102 @@
+#!/bin/bash
+# Bring the terminal tab hosting a Claude session to the front: either a tmux
+# session by name, or a plain WezTerm pane as claudejump://wezterm/<pane>/<tty>.
+#
+# Used as the click action for the turn-complete notifications posted by
+# ~/.claude/hooks/claude-turn-notify.sh, so clicking a banner lands the captain
+# in the session that finished.
+#
+# The tmux-session -> tab mapping is resolved live on every call rather than
+# stored: tmux reports which terminal device each session is attached from, and
+# WezTerm reports the terminal device behind each tab. Nothing to keep in sync,
+# and moving or recreating a tab cannot make it stale.
+#
+# A plain pane is checked against its tty before activation, because pane ids
+# restart with WezTerm and an old alert must not open somebody else's tab.
+#
+# Exits 0 on every path; a failed jump must never surface as an error dialog.
+
+set -u
+
+ARG="${1:-}"
+LOG="$HOME/.claude/hooks/turn-notify.log"
+
+# Accepts either a plain tmux session name (when run by hand) or a
+# claudejump://<percent-encoded-name> URL (when run by the click handler).
+# Keeping the two forms distinguishable means a session name that legitimately
+# contains "%" is not mistaken for an escape sequence.
+WANT_PANE=""
+WANT_TTY=""
+if [ "${ARG#claudejump://}" != "$ARG" ]; then
+  encoded="${ARG#claudejump://}"
+  while [ "${encoded%/}" != "$encoded" ]; do encoded="${encoded%/}"; done
+  encoded="${encoded//\\/\\\\}"
+  SESSION="$(printf '%b' "${encoded//%/\\x}")"
+  # An encoded session name has no raw "/", so this form cannot collide with one.
+  if [[ "${ARG#claudejump://}" =~ ^wezterm/([0-9]+)/(ttys?[0-9a-z]+)/?$ ]]; then
+    WANT_PANE="${BASH_REMATCH[1]}"
+    WANT_TTY="${BASH_REMATCH[2]}"
+  fi
+else
+  SESSION="$ARG"
+fi
+
+log() {
+  printf '%s jump: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+raise_terminal() {
+  open -a WezTerm 2>/dev/null || true
+}
+
+if [ -z "$SESSION" ]; then
+  log "no session argument"
+  raise_terminal
+  exit 0
+fi
+
+export PATH="${JUMP_PATH:+$JUMP_PATH:}/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+if [ -n "$WANT_PANE" ]; then
+  tty="/dev/$WANT_TTY"
+else
+# Which terminal device is this tmux session attached from?
+tty="$(tmux list-clients -F '#{client_tty} #{client_session}' 2>/dev/null \
+  | awk -v s="$SESSION" '$2 == s { print $1; exit }')"
+fi
+
+if [ -z "$tty" ]; then
+  # Detached session, or tmux is gone. Raising the terminal is still the most
+  # useful thing left to do.
+  log "session=$SESSION not attached; raising terminal only"
+  raise_terminal
+  exit 0
+fi
+
+pane="$(wezterm cli list --format json 2>/dev/null \
+  | jq -r --arg t "$tty" 'map(select(.tty_name == $t)) | .[0].pane_id // empty' 2>/dev/null)"
+
+if [ -z "$pane" ] || { [ -n "$WANT_PANE" ] && [ "$pane" != "$WANT_PANE" ]; }; then
+  log "session=$SESSION tty=$tty no matching terminal tab"
+  raise_terminal
+  exit 0
+fi
+
+# Order matters: raising the app restores whichever tab last held window focus,
+# which silently undoes a tab activation performed before it. Raise first, let
+# the app settle, then activate - and re-assert once, since the raise can land
+# late enough to clobber a single activation.
+raise_terminal
+sleep 0.4
+wezterm cli activate-pane --pane-id "$pane" 2>/dev/null
+sleep 0.4
+wezterm cli activate-pane --pane-id "$pane" 2>/dev/null
+
+focused="$(wezterm cli list-clients --format json 2>/dev/null | jq -r '.[0].focused_pane_id // empty' 2>/dev/null)"
+if [ "$focused" = "$pane" ]; then
+  log "session=$SESSION tty=$tty pane=$pane activated"
+else
+  log "session=$SESSION tty=$tty pane=$pane activate MISSED focused=${focused:-unknown}"
+fi
+
+exit 0
