@@ -50,6 +50,12 @@ To restore it on this Mac:
   These are the installed handler's settings; the rebuild itself has not been rehearsed.
 * Run the tests: `cd ~/.claude/hooks && bash claude-turn-notify.test.sh "$PWD/claude-turn-notify.sh" ~/.local/bin/claude-session-jump </dev/null` (it takes a few minutes).
 
+FirstMate keeps every alert it has shown, so `global-claude/bin/firstmate-trim` deletes anything older than 24 hours from its folders and from the hook's log.
+The queue of alerts not yet shown is never touched.
+The LaunchAgent `global-claude/launchagents/com.mk-global.firstmate-trim.plist` runs it hourly and at login.
+To restore it, copy the script to `~/.local/bin/` (executable) and the plist to `~/Library/LaunchAgents/`, then run `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mk-global.firstmate-trim.plist`.
+`bash tests/firstmate_trim_test.sh` checks it.
+
 FirstMate itself, with its logo, is not kept here.
 
 `scripts/backup.sh` copies `~/.claude` here, then commits and pushes on its own.

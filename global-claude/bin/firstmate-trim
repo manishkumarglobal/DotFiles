@@ -1,0 +1,53 @@
+#!/bin/bash
+# Keep only the last day of FirstMate alert history.
+#
+# FirstMate keeps every delivered alert (Processed/) and a marker per alert
+# (Processed/.markers/) forever. This removes anything older than the
+# retention window from Processed/, Failed/ and Logs/, and drops older lines
+# from the Claude turn-alert hook's log. Queue/ is never touched: it holds
+# alerts that have not been shown yet.
+#
+# A marker only matters for the seconds an alert sits in Queue/, so removing
+# day-old markers cannot make an old alert reappear.
+#
+# Run hourly by the com.mk-global.firstmate-trim LaunchAgent.
+# Overrides, for tests: FIRSTMATE_TRIM_ROOT, FIRSTMATE_TRIM_LOG,
+# FIRSTMATE_TRIM_HOURS.
+
+set -u
+
+root="${FIRSTMATE_TRIM_ROOT:-$HOME/Library/Application Support/FirstMateNotify}"
+log="${FIRSTMATE_TRIM_LOG:-$HOME/.claude/hooks/turn-notify.log}"
+hours="${FIRSTMATE_TRIM_HOURS:-24}"
+
+case "$hours" in
+  '' | *[!0-9]*) echo "firstmate-trim: hours must be a whole number" >&2; exit 2 ;;
+esac
+minutes=$((hours * 60))
+status=0
+
+for dir in "$root/Processed" "$root/Failed" "$root/Logs"; do
+  # Skip a missing or symlinked directory rather than follow it elsewhere.
+  [ -d "$dir" ] && [ ! -L "$dir" ] || continue
+  find "$dir" -mindepth 1 -maxdepth 2 -type f -mmin +"$minutes" -delete || status=1
+done
+
+if [ -f "$log" ] && [ ! -L "$log" ]; then
+  cutoff="$(date -v-"${hours}"H '+%Y-%m-%d %H:%M:%S')"
+  tmp="$log.trim.$$"
+  # Lines start with "YYYY-MM-DD HH:MM:SS", which sorts as text. A line without
+  # a timestamp follows the decision for the line before it.
+  if awk -v cutoff="$cutoff" '
+      /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]/ {
+        keep = (substr($0, 1, 19) >= cutoff)
+      }
+      keep { print }
+    ' "$log" >"$tmp"; then
+    mv "$tmp" "$log" || { rm -f "$tmp"; status=1; }
+  else
+    rm -f "$tmp"
+    status=1
+  fi
+fi
+
+exit "$status"
