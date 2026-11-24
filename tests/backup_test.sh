@@ -37,6 +37,9 @@ printf '{}\n' >"$SANDBOX/home/.claude/settings.json"
 printf '#!/bin/sh\necho current\n' >"$SANDBOX/home/.claude/hooks/notify.sh"
 printf '#!/bin/sh\necho old\n' >"$SANDBOX/home/.claude/hooks/notify.sh.before-20261123-some-fix"
 printf '#!/bin/sh\necho old test\n' >"$SANDBOX/home/.claude/hooks/notify.test.sh.before-20261122-other"
+printf '#!/bin/bash\necho installed\n' >"$SANDBOX/home/.claude/hooks/claude-turn-notify.sh"
+printf '#!/bin/bash\necho installed tests\n' >"$SANDBOX/home/.claude/hooks/claude-turn-notify.test.sh"
+printf 'ignored-session\n' >"$SANDBOX/home/.claude/hooks/turn-notify-ignore"
 printf 'line\n' >"$SANDBOX/home/.claude/hooks/turn-notify.log"
 printf 'stamp\n' >"$SANDBOX/home/.claude/hooks/.turn-notify-state/ready-abc"
 
@@ -64,6 +67,14 @@ published="$(sandbox_git git -C "$SANDBOX/remote.git" ls-tree -r --name-only HEA
 case "$published" in
   *"global-claude/hooks/notify.sh"*) pass "the hook in use is published" ;;
   *) fail "the hook in use is published" ;;
+esac
+case "$published" in
+  *"claude-turn-notify"*) fail "the turn-alert hook and its tests, owned by EngineeringToolsMK, are not published" ;;
+  *) pass "the turn-alert hook and its tests, owned by EngineeringToolsMK, are not published" ;;
+esac
+case "$published" in
+  *"global-claude/hooks/turn-notify-ignore"*) pass "the alert ignore list is still published" ;;
+  *) fail "the alert ignore list is still published" ;;
 esac
 case "$published" in
   *".before-"*) fail "dated safety copies are not published" ;;

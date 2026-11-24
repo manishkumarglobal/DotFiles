@@ -82,12 +82,21 @@ for directory in "${BACKUP_DIRECTORIES[@]}"; do
     # are made beside a file before a live edit, so a rollback is one `cp`, and
     # they are never reviewed: this script commits and pushes to a public
     # repository on its own, so it must publish only the files in use.
+    #
+    # The turn-alert hook and its tests are installed copies, not originals.
+    # EngineeringToolsMK owns them (tools/turn-alerts, installed with its
+    # install.py), as it owns the skills above. Copying them here would bring
+    # back a second, drifting source of truth. Retired 2026-11-24. The ignore
+    # list beside them (turn-notify-ignore) is configuration and is still
+    # backed up. The leading slash anchors each name to hooks/ itself.
     rsync -a --delete \
       --exclude='.DS_Store' \
       --exclude='*.tmp' \
       --exclude='*.swp' \
       --exclude='*.log' \
       --exclude='*.before-*' \
+      --exclude='/claude-turn-notify.sh' \
+      --exclude='/claude-turn-notify.test.sh' \
       --exclude='.turn-notify-state/' \
       "$source_directory/" \
       "$destination_directory/"
