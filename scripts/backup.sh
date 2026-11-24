@@ -84,12 +84,18 @@ for directory in "${BACKUP_DIRECTORIES[@]}"; do
     # repository on its own, so it must publish only the files in use.
     #
     # The turn-alert hook and its tests are installed copies, not originals.
-    # EngineeringToolsMK owns them (tools/turn-alerts, installed with its
-    # install.py), as it owns the skills above. Copying them here would bring
-    # back a second, drifting source of truth. Retired 2026-11-24. The ignore
-    # list beside them (turn-notify-ignore) is configuration and is still
-    # backed up. The leading slash anchors each name to hooks/ itself.
-    rsync -a --delete \
+    # EngineeringToolsMK owns and installs them, as it owns the skills above.
+    # Copying them here would bring back a second, drifting source of truth.
+    # Retired 2026-11-24. The ignore list beside them (turn-notify-ignore) is
+    # configuration and is still backed up. The leading slash anchors each name
+    # to hooks/ itself.
+    #
+    # --delete-excluded also removes excluded files already in the checkout,
+    # so a stray copy made earlier cannot stay there and be committed.
+    #
+    # turn-notify-disabled is the hook's off switch: runtime state, not
+    # configuration.
+    rsync -a --delete --delete-excluded \
       --exclude='.DS_Store' \
       --exclude='*.tmp' \
       --exclude='*.swp' \
@@ -97,6 +103,7 @@ for directory in "${BACKUP_DIRECTORIES[@]}"; do
       --exclude='*.before-*' \
       --exclude='/claude-turn-notify.sh' \
       --exclude='/claude-turn-notify.test.sh' \
+      --exclude='/turn-notify-disabled' \
       --exclude='.turn-notify-state/' \
       "$source_directory/" \
       "$destination_directory/"

@@ -42,6 +42,8 @@ printf '#!/bin/bash\necho installed tests\n' >"$SANDBOX/home/.claude/hooks/claud
 printf 'ignored-session\n' >"$SANDBOX/home/.claude/hooks/turn-notify-ignore"
 printf 'line\n' >"$SANDBOX/home/.claude/hooks/turn-notify.log"
 printf 'stamp\n' >"$SANDBOX/home/.claude/hooks/.turn-notify-state/ready-abc"
+printf 'line\n' >"$SANDBOX/home/.claude/hooks/turn-notify.log.12345.tmp"
+: >"$SANDBOX/home/.claude/hooks/turn-notify-disabled"
 
 sandbox_git git init --quiet --bare "$SANDBOX/remote.git"
 sandbox_git git clone --quiet "$SANDBOX/remote.git" "$SANDBOX/home/git/DotFiles" 2>/dev/null
@@ -53,6 +55,13 @@ cp "$BACKUP" "$SANDBOX/home/git/DotFiles/scripts/backup.sh"
 sandbox_git git -C "$SANDBOX/home/git/DotFiles" add README.md .gitignore scripts
 sandbox_git git -C "$SANDBOX/home/git/DotFiles" commit --quiet -m init
 sandbox_git git -C "$SANDBOX/home/git/DotFiles" push --quiet -u origin HEAD 2>/dev/null
+
+# Excluded files that are already in the checkout, left by an earlier run or by
+# hand, must not be published either. They are untracked, so a plain commit of
+# global-claude would pick them up.
+mkdir -p "$SANDBOX/home/git/DotFiles/global-claude/hooks"
+printf '#!/bin/sh\necho stray\n' >"$SANDBOX/home/git/DotFiles/global-claude/hooks/x.sh.before-1"
+printf '#!/bin/bash\necho stray tests\n' >"$SANDBOX/home/git/DotFiles/global-claude/hooks/claude-turn-notify.test.sh"
 
 if sandbox_git bash "$BACKUP" >"$SANDBOX/out" 2>&1; then
   pass "backup.sh completes"
@@ -87,6 +96,19 @@ esac
 case "$published" in
   *".turn-notify-state"*) fail "runtime state is not published" ;;
   *) pass "runtime state is not published" ;;
+esac
+
+case "$published" in
+  *"turn-notify.log."*|*".tmp"*) fail "a leftover temporary log copy is not published" ;;
+  *) pass "a leftover temporary log copy is not published" ;;
+esac
+case "$published" in
+  *"turn-notify-disabled"*) fail "the hook's off switch is not published" ;;
+  *) pass "the hook's off switch is not published" ;;
+esac
+case "$published" in
+  *"x.sh.before-1"*|*"claude-turn-notify.test.sh"*) fail "excluded files already in the checkout are not published" ;;
+  *) pass "excluded files already in the checkout are not published" ;;
 esac
 
 if [ "$FAILED" -eq 0 ]; then

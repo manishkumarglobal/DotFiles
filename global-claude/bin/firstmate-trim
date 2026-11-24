@@ -7,8 +7,9 @@
 # from the Claude turn-alert hook's log. Queue/ is never touched: it holds
 # alerts that have not been shown yet.
 #
-# A marker only matters for the seconds an alert sits in Queue/, so removing
-# day-old markers cannot make an old alert reappear.
+# FirstMate's id and dedupe markers suppress a repeated event for as long as
+# they exist, so trimming them limits that suppression to the retention window
+# (24 hours by default), which is the intent.
 #
 # Run hourly by the com.mk-global.firstmate-trim LaunchAgent.
 # Overrides, for tests: FIRSTMATE_TRIM_ROOT, FIRSTMATE_TRIM_LOG,
@@ -23,6 +24,8 @@ hours="${FIRSTMATE_TRIM_HOURS:-24}"
 case "$hours" in
   '' | *[!0-9]*) echo "firstmate-trim: hours must be a whole number" >&2; exit 2 ;;
 esac
+# Read the number in base 10, so a leading zero ("08") is not taken as octal.
+hours=$((10#$hours))
 minutes=$((hours * 60))
 status=0
 
@@ -34,7 +37,13 @@ done
 
 if [ -f "$log" ] && [ ! -L "$log" ]; then
   cutoff="$(date -v-"${hours}"H '+%Y-%m-%d %H:%M:%S')"
-  tmp="$log.trim.$$"
+  # The temporary copy ends in .tmp, which backup.sh and .gitignore skip, and
+  # the trap removes it if the job is killed or fails part way.
+  tmp="$log.$$.tmp"
+  trap 'rm -f "$tmp"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   # Lines start with "YYYY-MM-DD HH:MM:SS", which sorts as text. A line without
   # a timestamp follows the decision for the line before it.
   if awk -v cutoff="$cutoff" '
