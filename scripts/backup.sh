@@ -77,11 +77,33 @@ for directory in "${BACKUP_DIRECTORIES[@]}"; do
     # Runtime output is excluded: logs and state stamps change on every turn,
     # so backing them up would produce a commit's worth of churn each run and
     # bury the configuration changes that actually matter.
-    rsync -a --delete \
+    #
+    # Dated safety copies (name.before-<date>-<reason>) are excluded too. They
+    # are made beside a file before a live edit, so a rollback is one `cp`, and
+    # they are never reviewed: this script commits and pushes to a public
+    # repository on its own, so it must publish only the files in use.
+    #
+    # The turn-alert hook and its tests are installed copies, not originals.
+    # EngineeringToolsMK owns and installs them, as it owns the skills above.
+    # Copying them here would bring back a second, drifting source of truth.
+    # Retired 2026-11-24. The ignore list beside them (turn-notify-ignore) is
+    # configuration and is still backed up. The leading slash anchors each name
+    # to hooks/ itself.
+    #
+    # --delete-excluded also removes excluded files already in the checkout,
+    # so a stray copy made earlier cannot stay there and be committed.
+    #
+    # turn-notify-disabled is the hook's off switch: runtime state, not
+    # configuration.
+    rsync -a --delete --delete-excluded \
       --exclude='.DS_Store' \
       --exclude='*.tmp' \
       --exclude='*.swp' \
       --exclude='*.log' \
+      --exclude='*.before-*' \
+      --exclude='/claude-turn-notify.sh' \
+      --exclude='/claude-turn-notify.test.sh' \
+      --exclude='/turn-notify-disabled' \
       --exclude='.turn-notify-state/' \
       "$source_directory/" \
       "$destination_directory/"

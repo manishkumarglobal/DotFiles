@@ -31,3 +31,31 @@ That's it. You are all set to enjoy ZSH
 When the tab bar is full, the active tab keeps its whole title and the other tabs shrink to fit.
 The tab bar logic has tests that run the real config through WezTerm's tab bar layout steps.
 Run them with `luajit tests/wezterm_tab_bar_test.lua` (LuaJIT from Homebrew: `brew install luajit`).
+
+## Claude Code alerts
+
+The alert hook sends a FirstMate alert when a Claude Code session in WezTerm or tmux is ready, has failed, or needs input.
+It is not kept here.
+EngineeringToolsMK owns the hook, its tests and the click helper, and installs and checks them.
+Its installer does not build the click handler app, and that repository documents how to rebuild it.
+`scripts/backup.sh` skips the installed hook and its tests for that reason.
+
+Two parts of the setup stay here:
+
+* `global-claude/settings.json` wires the hook to the `UserPromptSubmit`, `Stop`, `StopFailure` and `Notification` events.
+  The installer never writes that file, and its check fails until the wiring is there.
+* `global-claude/hooks/turn-notify-ignore` lists tmux sessions that never alert.
+  Copy it to `~/.claude/hooks/`.
+
+FirstMate keeps every alert it has shown, so `global-claude/bin/firstmate-trim` deletes anything older than 24 hours from its folders and from the hook's log.
+The queue of alerts not yet shown is never touched.
+The LaunchAgent `global-claude/launchagents/com.mk-global.firstmate-trim.plist` runs it hourly and at login.
+To restore it, copy the script to `~/.local/bin/` (executable) and the plist to `~/Library/LaunchAgents/`, then run `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mk-global.firstmate-trim.plist`.
+The plist names this account's home folder in its program path, so edit that path first on any other account.
+If the job is already loaded, run `launchctl bootout gui/$(id -u)/com.mk-global.firstmate-trim` before the `bootstrap`, or the reinstall fails.
+`bash tests/firstmate_trim_test.sh` checks it.
+
+FirstMate itself, with its logo, is not kept here.
+
+`scripts/backup.sh` copies the `agents`, `commands`, `rules` and `hooks` folders of `~/.claude`, plus `CLAUDE.md` and `settings.json`, here, then commits and pushes on its own.
+It leaves out logs, runtime state and dated safety copies (`*.before-*`); `bash tests/backup_test.sh` checks that.
